@@ -1,0 +1,46 @@
+{
+  "women": [
+    {
+      "id": 1750833287837,
+      "name": "hg",
+      "category": "women",
+      "image": "/uploads/women/1750833287817-WhatsApp Image 2024-12-19 at 15.24.06_0e2307bc.jpg",
+      "new_price": 90,
+      "old_price": 290
+    },
+    {
+      "id": 1750853363304,
+      "name": "jhsd",
+      "category": "women",
+      "image": "/uploads/women/1750853363294-WhatsApp Image 2024-12-19 at 15.24.07_e7486ae6.jpg",
+      "new_price": 90,
+      "old_price": 290
+    },
+    {
+      "id": 1750853532773,
+      "name": "kcn",
+      "category": "women",
+      "image": "/uploads/women/1750853532770-WhatsApp Image 2024-12-19 at 15.24.06_0e2307bc.jpg",
+      "new_price": 9,
+      "old_price": 209
+    }
+  ],
+  "kids": [
+    {
+      "id": 1750853556337,
+      "name": "8",
+      "category": "kids",
+      "image": "/uploads/kids/1750853556335-WhatsApp Image 2024-12-19 at 15.24.07_a5751c06.jpg",
+      "new_price": 9,
+      "old_price": 209
+    },
+    {
+      "id": 1750855311429,
+      "name": "kfjc",
+      "category": "kids",
+      "image": "/uploads/kids/1750855311426-saveprojectsort.png",
+      "new_price": 90,
+      "old_price": 290
+    }
+  ]
+}
