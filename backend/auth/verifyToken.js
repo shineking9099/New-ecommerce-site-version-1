@@ -1,14 +1,12 @@
-// backend/auth/verifyToken.js
-
 const jwt = require('jsonwebtoken');
-const { SECRET_KEY } = require('./adminAuth'); // ✅ consistent import
+const { SECRET_KEY } = require('./adminAuth');
 
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
-  
+
   if (!token) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
+    return res.status(401).json({ success: false, error: 'Access denied. No token provided.' });
   }
 
   try {
@@ -16,9 +14,8 @@ function verifyToken(req, res, next) {
     req.user = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ success: false, error: 'Invalid token' });
   }
 }
 
-// ✅ Correct module export
 module.exports = verifyToken;

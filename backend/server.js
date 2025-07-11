@@ -1,276 +1,188 @@
+// admin/backend/server.js
+
 const express = require('express');
-const fs = require('fs');
-const multer = require('multer');
 const cors = require('cors');
-const path = require('path');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = 5000;
 
-// 1. Configure Paths Correctly
-const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
-const ASSETS_DIR = path.join(__dirname, '..', 'my-ecommerce-admin', 'src', 'assets');
+// Configure Paths
+const UPLOADS_DIR = path.join(__dirname, '..', 'frontend', 'public', 'uploads');
 
-// 2. Ensure Directories Exist
+// Ensure uploads directory exists
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-fs.mkdirSync(ASSETS_DIR, { recursive: true });
 
-app.use(cors());
+// Middleware
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+// Serve static files from uploads directory
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// 3. Improved Multer Configuration
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOADS_DIR);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'), false);
-    }
-  }
-});
-
-// 4. Auth Middleware
-const SECRET_KEY = 'your_admin_secret_key';
-const verifyToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Access denied' });
-
-  try {
-    req.user = jwt.verify(token, SECRET_KEY);
-    next();
-  } catch (err) {
-    res.status(400).json({ error: 'Invalid token' });
-  }
+// Auth Configuration
+const SECRET_KEY = 'your_very_secure_secret_key_123';
+const ADMIN_USER = {
+  username: 'admin',
+  password: 'admin123'
 };
 
-// 5. Admin Login Route
-app.post('/auth/admin/login', (req, res) => {
+// Login endpoint
+app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-  if (username === 'admin' && password === 'admin123') {
-    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: '1d' });
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  if (username === ADMIN_USER.username && password === ADMIN_USER.password) {
+    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: '1h' });
     return res.json({ token });
   }
+
   res.status(401).json({ error: 'Invalid credentials' });
 });
 
-// 6. Product Routes
-app.post('/upload', verifyToken, upload.single('image'), (req, res) => {
+// -------------------- Serve products by category --------------------
+function getCategoryData(category) {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image uploaded' });
-    }
-
-    const { name, price, category } = req.body;
-    if (!name || !price || !category) {
-      // Delete the uploaded file if validation fails
-      fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename));
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const product = {
-      id: Date.now(),
-      name,
-      price,
-      category,
-      image: `/uploads/${req.file.filename}`
-    };
-
-    // Save to JSON file
-    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
-    let products = [];
+    const dataPath = path.join(__dirname, '..', 'frontend', 'src', 'assets', `${category}.js`);
+    delete require.cache[require.resolve(dataPath)];
     
-    if (fs.existsSync(categoryFile)) {
-      const fileContent = fs.readFileSync(categoryFile, 'utf-8');
-      const match = fileContent.match(/=\s*(\[[\s\S]*?\])/);
-      if (match) products = JSON.parse(match[1]);
-    }
-
-    products.push(product);
-    const newContent = `const ${category} = ${JSON.stringify(products, null, 2)};\nexport default ${category};`;
-    fs.writeFileSync(categoryFile, newContent);
-
-    res.json({ message: 'Product uploaded successfully', product });
+    // Read file contents directly instead of requiring
+    const fileContents = fs.readFileSync(dataPath, 'utf8');
+    
+    // Simple parsing - adjust based on your actual file format
+    const data = eval(fileContents.replace('const products =', '').replace('module.exports = products;', '');
+    
+    // Ensure we always return an array
+    return Array.isArray(data) ? data : [];
   } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: 'Server error during upload' });
+    console.error(`Error loading data for ${category}:`, error);
+    return [];
   }
-});
+}
 
 app.get('/products/:category', (req, res) => {
-  try {
-    const { category } = req.params;
-    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
-    
-    if (!fs.existsSync(categoryFile)) {
-      return res.json([]);
-    }
-
-    const fileContent = fs.readFileSync(categoryFile, 'utf-8');
-    const match = fileContent.match(/=\s*(\[[\s\S]*?\])/);
-    const products = match ? JSON.parse(match[1]) : [];
-    
-    res.json(products);
-  } catch (error) {
-    console.error('Fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch products' });
+  const category = req.params.category;
+  if (!categories.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
   }
+  const data = getCategoryData(category);
+  res.json(data);
 });
+app.delete('/products/:category/:id', (req, res) => {
+  const category = req.params.category;
+  const id = req.params.id;
 
-app.delete('/products/:category/:id', verifyToken, (req, res) => {
+  // Verify authorization
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Authorization token required' });
+  }
+
   try {
-    const { category, id } = req.params;
-    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
+    jwt.verify(token, SECRET_KEY);
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  if (!categories.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+
+  const dataPath = path.join(__dirname, '..', 'frontend', 'src', 'assets', `${category}.js`);
+
+  try {
+    // Read file directly instead of require
+    const fileContent = fs.readFileSync(dataPath, 'utf8');
+    let products;
     
-    if (!fs.existsSync(categoryFile)) {
-      return res.status(404).json({ error: 'Category not found' });
+    // Handle both CommonJS and ES module formats
+    if (fileContent.includes('module.exports')) {
+      products = eval(fileContent.replace('module.exports =', ''));
+    } else if (fileContent.includes('export default')) {
+      products = eval(fileContent.replace('export default', ''));
+    } else {
+      products = eval(fileContent);
     }
 
-    const fileContent = fs.readFileSync(categoryFile, 'utf-8');
-    const match = fileContent.match(/=\s*(\[[\s\S]*?\])/);
-    let products = match ? JSON.parse(match[1]) : [];
-    
-    const index = products.findIndex(p => p.id === Number(id));
+    // Ensure products is an array
+    if (!Array.isArray(products)) {
+      throw new Error('Invalid data format - expected array');
+    }
+
+    // String comparison for IDs
+    const index = products.findIndex(p => String(p.id) === String(id));
     if (index === -1) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // Delete the image file
-    const imagePath = path.join(UPLOADS_DIR, products[index].image.split('/uploads/')[1]);
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
-
+    // Remove the product
     products.splice(index, 1);
-    const newContent = `const ${category} = ${JSON.stringify(products, null, 2)};\nexport default ${category};`;
-    fs.writeFileSync(categoryFile, newContent);
 
-    res.json({ message: 'Product deleted successfully' });
+    // Convert back to CommonJS format
+    const exportString = `module.exports = ${JSON.stringify(products, null, 2)};\n`;
+
+    // Write back to file
+    fs.writeFileSync(dataPath, exportString, 'utf-8');
+
+    return res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Delete error:', error);
-    res.status(500).json({ error: 'Failed to delete product' });
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message 
+    });
+  }
+});
+// --------------------------------------------------------------------
+app.patch('/products/:category/:id', (req, res) => {
+  const category = req.params.category;
+  const id = req.params.id;
+  const { name, price } = req.body;
+
+  if (!categories.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+
+  const dataPath = path.join(__dirname, '..', 'frontend', 'src', 'assets', `${category}.js`);
+
+  try {
+    delete require.cache[require.resolve(dataPath)];
+    let products = require(dataPath);
+
+    const index = products.findIndex(p => String(p.id) === String(id));
+    if (index === -1) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    if (name !== undefined) products[index].name = name;
+    if (price !== undefined) products[index].price = price;
+
+    const exportString = `module.exports = ${JSON.stringify(products, null, 2)};`;
+
+    fs.writeFileSync(dataPath, exportString, 'utf-8');
+
+    res.json({ message: 'Product updated successfully', product: products[index] });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Uploads directory: ${UPLOADS_DIR}`);
+  console.log('Login endpoint: POST /api/login');
+  console.log('Products endpoint: GET /products/:category');
 });
-
-
-
-
-
-/* 
-
- // backend/server.js  old server tha jo image or text send
-const express = require('express');
-const fs      = require('fs');
-const multer  = require('multer');
-const cors    = require('cors');
-const path    = require('path');
-
-const app  = express();
-const PORT = 5000;
-
-// ─── Paths ──────────────────────────────────────────────────────────────────────
-const FRONTEND_ROOT = path.join(__dirname, '..', 'my-ecommerce-admin');
-const UPLOADS_DIR   = path.join(FRONTEND_ROOT, 'public', 'uploads');
-const ASSETS_DIR    = path.join(FRONTEND_ROOT, 'src', 'assets');
-
-// ensure uploads folder exists
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
-
-// serve images
-app.use('/uploads', express.static(UPLOADS_DIR));
-app.use(cors());
-app.use(express.json());
-
-// ─── Multer (file upload) ──────────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename:    (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
-});
-const upload = multer({ storage });
-
-// ─── POST /upload ───────────────────────────────────────────────────────────────
-app.post('/upload', upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image uploaded' });
-  }
-
-  const { name, price, category } = req.body;
-  const id    = Date.now();
-  const image = `/uploads/${req.file.filename}`;
-  const product = { id, name, price, image };
-
-  const filePath = path.join(ASSETS_DIR, `${category}.js`);
-  let arr = [];
-
-  if (fs.existsSync(filePath)) {
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    const m   = raw.match(/=\s*(\[[\s\S]*\]);/);
-    if (m) arr = JSON.parse(m[1]);
-  }
-
-  arr.push(product);
-  const newContent = `const ${category} = ${JSON.stringify(arr, null, 2)};\nexport default ${category};\n`;
-  fs.writeFileSync(filePath, newContent, 'utf-8');
-
-  res.json({ message: 'Product uploaded successfully' });
-});
-
-// ─── GET /products/:category ───────────────────────────────────────────────────
-app.get('/products/:category', (req, res) => {
-  const filePath = path.join(ASSETS_DIR, `${req.params.category}.js`);
-  if (!fs.existsSync(filePath)) {
-    return res.json([]);            // return empty array if file not there
-  }
-
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const m   = raw.match(/=\s*(\[[\s\S]*\]);/);
-  const arr = m ? JSON.parse(m[1]) : [];
-  res.json(arr);
-});
-
-// ─── DELETE /products/:category/:id ────────────────────────────────────────────
-app.delete('/products/:category/:id', (req, res) => {
-  const { category, id } = req.params;
-  const filePath = path.join(ASSETS_DIR, `${category}.js`);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: 'Not found' });
-  }
-
-  const raw = fs.readFileSync(filePath, 'utf-8');
-  const m   = raw.match(/=\s*(\[[\s\S]*\]);/);
-  if (!m) return res.status(500).json({ error: 'Parse error' });
-
-  let arr = JSON.parse(m[1]);
-  arr = arr.filter((p) => p.id.toString() !== id);
-
-  const newContent = `const ${category} = ${JSON.stringify(arr, null, 2)};\nexport default ${category};\n`;
-  fs.writeFileSync(filePath, newContent, 'utf-8');
-
-  res.json({ message: 'Deleted successfully' });
-});
-
-// ─── Start ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`✅ Server listening at http://localhost:${PORT}`);
-});
-  */
