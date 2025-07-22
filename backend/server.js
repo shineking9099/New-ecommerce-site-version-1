@@ -1,19 +1,47 @@
-// admin/backend/server.js
-
+require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
-const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors');
+const jwt = require('jsonwebtoken');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
-// Configure Paths
-const UPLOADS_DIR = path.join(__dirname, '..', 'frontend', 'public', 'uploads');
+// Configuration
+const SECRET_KEY = process.env.SECRET_KEY || 'your_secure_secret_key_123';
+const ADMIN_CREDS = {
+  username: process.env.ADMIN_USERNAME || 'admin',
+  password: process.env.ADMIN_PASSWORD || 'admin123'
+};
 
-// Ensure uploads directory exists
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Path configuration
+const FRONTEND_ROOT = path.resolve(__dirname, '..', 'my-ecommerce-admin');
+const UPLOADS_DIR = path.resolve(FRONTEND_ROOT, 'public', 'uploads');
+const ASSETS_DIR = path.resolve(FRONTEND_ROOT, 'src', 'assets');
+
+// Ensure directories exist
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(ASSETS_DIR)) fs.mkdirSync(ASSETS_DIR, { recursive: true });
+
+// Multer configuration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `product-${Date.now()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files allowed'), false);
+  }
+});
 
 // Middleware
 app.use(cors({
@@ -22,160 +50,188 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 app.use(express.json());
-
-// Serve static files from uploads directory
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// Auth Configuration
-const SECRET_KEY = 'your_very_secure_secret_key_123';
-const ADMIN_USER = {
-  username: 'admin',
-  password: 'admin123'
+// Authentication Middleware
+const verifyToken = (req, res, next) => {
+  const token = req.headers['authorization']?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(403).json({ error: 'No token provided' });
+  }
+
+  jwt.verify(token, SECRET_KEY, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: 'Failed to authenticate token' });
+    }
+    
+    req.user = decoded;
+    next();
+  });
 };
 
-// Login endpoint
+// Debug endpoint
+app.get('/api/debug/uploads', (req, res) => {
+  fs.readdir(UPLOADS_DIR, (err, files) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({
+      uploadsDir: UPLOADS_DIR,
+      files: files,
+      absolutePath: path.resolve(UPLOADS_DIR)
+    });
+  });
+});
+
+// Login route
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required' });
+  
+  if (username === ADMIN_CREDS.username && password === ADMIN_CREDS.password) {
+    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: '1d' });
+    return res.json({ success: true, token });
   }
-
-  if (username === ADMIN_USER.username && password === ADMIN_USER.password) {
-    const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: '1h' });
-    return res.json({ token });
-  }
-
+  
   res.status(401).json({ error: 'Invalid credentials' });
 });
 
-// -------------------- Serve products by category --------------------
-function getCategoryData(category) {
+// Get products by category
+app.get('/api/products/:category', (req, res) => {
   try {
-    const dataPath = path.join(__dirname, '..', 'frontend', 'src', 'assets', `${category}.js`);
-    delete require.cache[require.resolve(dataPath)];
+    const category = req.params.category;
+    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
     
-    // Read file contents directly instead of requiring
-    const fileContents = fs.readFileSync(dataPath, 'utf8');
+    if (!fs.existsSync(categoryFile)) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const content = fs.readFileSync(categoryFile, 'utf8');
+    const match = content.match(/\[.*\]/s);
+    const products = match ? JSON.parse(match[0]) : [];
     
-    // Simple parsing - adjust based on your actual file format
-    const data = eval(fileContents.replace('const products =', '').replace('module.exports = products;', '');
-    
-    // Ensure we always return an array
-    return Array.isArray(data) ? data : [];
+    res.json(products);
   } catch (error) {
-    console.error(`Error loading data for ${category}:`, error);
-    return [];
+    console.error('Error fetching products:', error);
+    res.status(500).json({ error: 'Failed to fetch products' });
   }
-}
-
-app.get('/products/:category', (req, res) => {
-  const category = req.params.category;
-  if (!categories.includes(category)) {
-    return res.status(400).json({ error: 'Invalid category' });
-  }
-  const data = getCategoryData(category);
-  res.json(data);
 });
-app.delete('/products/:category/:id', (req, res) => {
-  const category = req.params.category;
-  const id = req.params.id;
 
-  // Verify authorization
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ error: 'Authorization token required' });
-  }
-
+// Delete product
+app.delete('/api/products/:category/:id', verifyToken, (req, res) => {
   try {
-    jwt.verify(token, SECRET_KEY);
-  } catch (err) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
+    const category = req.params.category;
+    const id = req.params.id;
+    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
 
-  if (!categories.includes(category)) {
-    return res.status(400).json({ error: 'Invalid category' });
-  }
-
-  const dataPath = path.join(__dirname, '..', 'frontend', 'src', 'assets', `${category}.js`);
-
-  try {
-    // Read file directly instead of require
-    const fileContent = fs.readFileSync(dataPath, 'utf8');
-    let products;
-    
-    // Handle both CommonJS and ES module formats
-    if (fileContent.includes('module.exports')) {
-      products = eval(fileContent.replace('module.exports =', ''));
-    } else if (fileContent.includes('export default')) {
-      products = eval(fileContent.replace('export default', ''));
-    } else {
-      products = eval(fileContent);
+    if (!fs.existsSync(categoryFile)) {
+      return res.status(404).json({ error: 'Category file not found' });
     }
 
-    // Ensure products is an array
-    if (!Array.isArray(products)) {
-      throw new Error('Invalid data format - expected array');
-    }
+    const content = fs.readFileSync(categoryFile, 'utf8');
+    const match = content.match(/\[.*\]/s);
+    let products = match ? JSON.parse(match[0]) : [];
 
-    // String comparison for IDs
-    const index = products.findIndex(p => String(p.id) === String(id));
-    if (index === -1) {
+    const productIndex = products.findIndex(p => p.id === id);
+    if (productIndex === -1) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // Remove the product
-    products.splice(index, 1);
+    const [deletedProduct] = products.splice(productIndex, 1);
+    fs.writeFileSync(categoryFile, `const products = ${JSON.stringify(products, null, 2)};\nexport default products;`);
 
-    // Convert back to CommonJS format
-    const exportString = `module.exports = ${JSON.stringify(products, null, 2)};\n`;
-
-    // Write back to file
-    fs.writeFileSync(dataPath, exportString, 'utf-8');
-
-    return res.json({ message: 'Product deleted successfully' });
+    res.json({ success: true, message: 'Product deleted successfully', deletedProduct });
   } catch (error) {
-    console.error('Delete error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error',
+    console.error('Error deleting product:', error);
+    res.status(500).json({ error: 'Failed to delete product' });
+  }
+});
+
+// Update product
+app.put('/api/products/:category/:id', verifyToken, (req, res) => {
+  try {
+    const { category, id } = req.params;
+    const { name, price } = req.body;
+    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
+    
+    if (!fs.existsSync(categoryFile)) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const content = fs.readFileSync(categoryFile, 'utf8');
+    const match = content.match(/\[.*\]/s);
+    let products = match ? JSON.parse(match[0]) : [];
+
+    const productIndex = products.findIndex(p => p.id === id);
+    if (productIndex === -1) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Update the product
+    products[productIndex] = {
+      ...products[productIndex],
+      name: name || products[productIndex].name,
+      price: price ? parseFloat(price) : products[productIndex].price,
+      updatedAt: new Date().toISOString()
+    };
+
+    fs.writeFileSync(categoryFile, `const products = ${JSON.stringify(products, null, 2)};\nexport default products;`);
+
+    res.json({
+      success: true,
+      message: 'Product updated successfully',
+      product: products[productIndex]
+    });
+  } catch (error) {
+    console.error('Update error:', error);
+    res.status(500).json({ 
+      error: 'Failed to update product',
       details: error.message 
     });
   }
 });
-// --------------------------------------------------------------------
-app.patch('/products/:category/:id', (req, res) => {
-  const category = req.params.category;
-  const id = req.params.id;
-  const { name, price } = req.body;
 
-  if (!categories.includes(category)) {
-    return res.status(400).json({ error: 'Invalid category' });
-  }
-
-  const dataPath = path.join(__dirname, '..', 'frontend', 'src', 'assets', `${category}.js`);
-
+// Upload product
+app.post('/api/upload', verifyToken, upload.single('image'), (req, res) => {
   try {
-    delete require.cache[require.resolve(dataPath)];
-    let products = require(dataPath);
-
-    const index = products.findIndex(p => String(p.id) === String(id));
-    if (index === -1) {
-      return res.status(404).json({ error: 'Product not found' });
+    if (!req.file) throw new Error('No file uploaded');
+    
+    const { name, price, category } = req.body;
+    if (!name || !price || !category) {
+      fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename));
+      throw new Error('Missing required fields');
     }
 
-    if (name !== undefined) products[index].name = name;
-    if (price !== undefined) products[index].price = price;
+    const imageUrl = `/uploads/${req.file.filename}`;
+    const categoryFile = path.join(ASSETS_DIR, `${category}.js`);
+    
+    let products = [];
+    if (fs.existsSync(categoryFile)) {
+      const content = fs.readFileSync(categoryFile, 'utf8');
+      const match = content.match(/\[.*\]/s);
+      products = match ? JSON.parse(match[0]) : [];
+    }
 
-    const exportString = `module.exports = ${JSON.stringify(products, null, 2)};`;
+    products.push({
+      id: Date.now().toString(),
+      name,
+      price: parseFloat(price),
+      image: imageUrl,
+      category,
+      createdAt: new Date().toISOString()
+    });
 
-    fs.writeFileSync(dataPath, exportString, 'utf-8');
+    fs.writeFileSync(categoryFile, `const products = ${JSON.stringify(products, null, 2)};\nexport default products;`);
 
-    res.json({ message: 'Product updated successfully', product: products[index] });
+    res.json({
+      success: true,
+      message: 'Upload successful',
+      product: { name, price, category, image: imageUrl }
+    });
   } catch (error) {
-    console.error('Error updating product:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    if (req.file?.filename) {
+      fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename));
+    }
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -183,6 +239,5 @@ app.patch('/products/:category/:id', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log(`Uploads directory: ${UPLOADS_DIR}`);
-  console.log('Login endpoint: POST /api/login');
-  console.log('Products endpoint: GET /products/:category');
+  console.log(`Access debug endpoint: http://localhost:${PORT}/api/debug/uploads`);
 });

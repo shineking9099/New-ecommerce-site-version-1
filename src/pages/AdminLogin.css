@@ -1,0 +1,112 @@
+.admin-panel {
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.admin-panel h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.admin-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-panel input,
+.admin-panel select {
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.upload-box {
+  height: 200px;
+  border: 2px dashed #ccc;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.upload-box.dragover {
+  border-color: #4CAF50;
+  background-color: #f8f8f8;
+}
+
+.upload-box img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.upload-box p {
+  color: #666;
+  text-align: center;
+}
+
+.file-input-label {
+  display: block;
+  padding: 0.75rem;
+  background: #f0f0f0;
+  color: #333;
+  text-align: center;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.file-input-label:hover {
+  background: #e0e0e0;
+}
+
+.file-input-label input {
+  display: none;
+}
+
+button {
+  padding: 0.75rem;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.message {
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.message.error {
+  background-color: #ffebee;
+  color: #f44336;
+}
+
+.message.success {
+  background-color: #e8f5e9;
+  color: #4CAF50;
+}
