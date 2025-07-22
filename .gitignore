@@ -1,6 +1,12 @@
-﻿node_modules/
+﻿# Dependencies
+node_modules/
+
+# Environment
 .env
-.DS_Store
+
+# Build files
 dist/
 build/
-*.log
+
+# Uploads (empty folder)
+my-ecommerce-admin/public/uploads/
