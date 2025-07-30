@@ -1,0 +1,93 @@
+.navbar {
+  background: linear-gradient(45deg, #1E90FF, #FF4500, #FFD700);
+  background-size: 200% 200%;
+  animation: gradientFlow 6s infinite alternate ease-in-out;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  padding: 10px 5%;
+  position: relative;
+}
+
+@keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.nav-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo p {
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.nav-login-cart {
+  position: relative;
+}
+
+.nav-login-cart .fa-shopping-cart {
+  color: white;
+  font-size: 24px;
+}
+
+.nav-cart-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #FF4141;
+  color: white;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.nav-menu {
+  display: flex;
+  list-style: none;
+  margin: 10px 0 0 0;
+  padding: 0;
+  gap: 20px;
+  justify-content: center;
+  overflow-x: auto; /* enables horizontal scrolling on mobile if needed */
+  white-space: nowrap; /* keeps li in one line on mobile */
+}
+
+.nav-menu li a {
+  color: white;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 5px;
+  transition: background 0.3s ease;
+}
+
+.nav-menu li.active a {
+  color: #FFD700;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.nav-menu li:hover a {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 768px) {
+  .nav-menu {
+    gap: 2px;
+    padding-top:5px;
+    justify-content: flex-start;
+    padding-bottom: 20px;
+    font-weight:bold;
+    font-size:17px;
+  }
+}
